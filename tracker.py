@@ -115,6 +115,7 @@ class Tracker:
 
     def _save(self):
         tmp = DATA + ".tmp"
+        os.makedirs(os.path.dirname(DATA), exist_ok=True)
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.history, f, indent=1)
         os.replace(tmp, DATA)
