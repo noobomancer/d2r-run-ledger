@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run Ledger</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23ffa800'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0e0c09;
+    --panel: #17130e;
+    --panel-2: #1f1a13;
+    --line: #2f271c;
+    --text: #e6dac0;
+    --muted: #8c8069;
+    --gold: #c7b377;      /* unique item */
+    --rune: #ffa800;      /* rune */
+    --set: #3fbf3f;       /* set item -> "in game" */
+    --magic: #8a8aff;     /* magic item -> links */
+    --danger: #d05a4a;
+    --display: "Cinzel", "Trajan Pro", Georgia, serif;
+    --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", Consolas, "Cascadia Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--ground); color: var(--text); }
+  body {
+    margin: 0; font: 15px/1.5 var(--body);
+    padding-inline: clamp(16px, 3vw, 40px); padding-block: 24px 48px;
+    background:
+      radial-gradient(1200px 500px at 20% -10%, rgba(199,179,119,.07), transparent 60%),
+      var(--ground);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+  h1, h2 { font-family: var(--display); font-weight: 700; letter-spacing: .06em; margin: 0; text-wrap: balance; }
+  h1 { font-size: 15px; color: var(--gold); text-transform: uppercase; letter-spacing: .22em; }
+  h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .18em; font-weight: 500; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  .hdr-r { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .reset { background: transparent; color: var(--gold); border: 1px solid var(--gold); padding: 7px 14px; }
+  .reset:hover { background: var(--gold); color: var(--ground); filter: none; }
+  .reset.armed { background: var(--danger); border-color: var(--danger); color: var(--text); }
+  .reset.stop { color: var(--muted); border-color: var(--line); }
+  .reset.stop:hover { background: transparent; color: var(--danger); border-color: var(--danger); }
+  .reset.stop.armed { background: var(--danger); color: var(--text); }
+  .status.stopped { color: var(--danger); } .status.stopped i { background: var(--danger); border-radius: 1px; }
+  .hstep { display: inline-flex; align-items: center; gap: 2px; }
+  .hstep button { background: none; border: 1px solid transparent; color: var(--muted); padding: 0 6px; font-size: 14px; line-height: 1.4; }
+  .hstep button:hover { border-color: var(--line); color: var(--text); filter: none; }
+  .hstep .hv { min-width: 1.6em; text-align: center; }
+  tr:not(:hover) .hstep button { opacity: .25; }
+  .hstep .hv.z { color: var(--muted); } .hstep .hv.nz { color: var(--rune); font-weight: 600; }
+
+  /* --- hero: the live timer --- */
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line); border-radius: 6px; padding: 22px 24px;
+  }
+  @media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
+            letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.ingame { color: var(--set); } .status.ingame i { background: var(--set); box-shadow: 0 0 10px var(--set); animation: pulse 2s infinite; }
+  .status.lobby { color: var(--gold); } .status.lobby i { background: var(--gold); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .status.ingame i { animation: none; } }
+  .clock { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600;
+           font-size: clamp(52px, 9vw, 96px); line-height: 1; margin: 10px 0 6px; letter-spacing: -.02em; }
+  .clock.ingame { color: var(--text); } .clock.lobby { color: var(--gold); } .clock.off { color: var(--line); }
+  .sub { color: var(--muted); font-size: 14px; min-height: 1.5em; }
+  .sub b { color: var(--text); font-weight: 600; }
+  .cmp-fast { color: var(--set); } .cmp-slow { color: var(--danger); }
+
+  .droppane { display: grid; gap: 10px; align-content: start; }
+  .droprow { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; min-width: 0; font: 16px var(--body); color: var(--text);
+    background: var(--ground); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--gold); }
+  button {
+    font: 600 13px var(--body); letter-spacing: .04em; color: var(--ground); background: var(--gold);
+    border: 0; border-radius: 4px; padding: 10px 16px; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:focus-visible, .ghost:focus-visible { outline: 2px solid var(--magic); outline-offset: 2px; }
+  .ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 5px 9px; font-size: 12px; }
+  .ghost:hover { color: var(--text); border-color: var(--muted); filter: none; }
+  .ghost.warn:hover { color: var(--danger); border-color: var(--danger); }
+  .hint { font-size: 12.5px; color: var(--muted); }
+  kbd { font: 600 11px var(--mono); color: var(--gold); border: 1px solid var(--line); border-bottom-width: 2px;
+        border-radius: 3px; padding: 1px 5px; background: var(--panel); }
+  .herald { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+            padding-bottom: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .hcount { font-size: 44px; font-weight: 600; line-height: 1.1; color: var(--rune); }
+  .hcount.bump { animation: bump .35s ease-out; }
+  @keyframes bump { 30% { transform: scale(1.18); color: #ffd27a; } }
+  @media (prefers-reduced-motion: reduce) { .hcount.bump { animation: none; } }
+  .hint b { color: var(--text); }
+  .hbtns { display: flex; gap: 6px; }
+  .hbtns button { font-size: 16px; padding: 10px 16px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .quick button { background: var(--panel); color: var(--rune); border: 1px solid var(--line); padding: 4px 9px; font-size: 12.5px; }
+  .quick button:hover { border-color: var(--rune); filter: none; }
+  .qsep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 4px; }
+  .quick button.u { color: var(--gold); } .quick button.u:hover { border-color: var(--gold); }
+
+  /* --- stat strip --- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+           border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .stat { padding: 14px 16px; border-right: 1px solid var(--line); }
+  .stat:last-child { border-right: 0; }
+  .stat .k { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font: 600 22px var(--mono); font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  /* --- body grid --- */
+  .cols { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; display: grid; gap: 12px; }
+  .card-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+       color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid rgba(47,39,28,.55); vertical-align: middle; }
+  tr.live td { background: rgba(63,191,63,.05); }
+  tr.live td:first-child { box-shadow: inset 2px 0 0 var(--set); }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); min-width: 120px; position: relative; overflow: hidden; }
+  .bar span { position: absolute; inset: 0 auto 0 0; background: var(--gold); opacity: .7; border-radius: 3px; }
+  .bar.fast span { background: var(--set); } .bar.slow span { background: var(--danger); }
+  tr.live .bar span { background: var(--set); opacity: 1; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: 12.5px; padding: 1px 7px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--line); }
+  .chip.rune { color: var(--rune); } .chip.uniq { color: var(--gold); }
+  .chip.set { color: var(--set); } .chip.quest { color: var(--magic); }
+  .actions { display: flex; gap: 4px; justify-content: flex-end; white-space: nowrap; }
+  .empty { color: var(--muted); font-style: italic; padding: 10px 0; }
+
+  .droplist { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 420px; overflow-y: auto; }
+  .droplist li { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; padding: 5px 0;
+                 border-bottom: 1px solid rgba(47,39,28,.55); }
+  .droplist .t { color: var(--muted); font-size: 12.5px; }
+  .droplist .n.rune { color: var(--rune); } .droplist .n.uniq { color: var(--gold); }
+  .droplist .n.set { color: var(--set); } .droplist .n.quest { color: var(--magic); }
+  .summary td { padding: 4px 0; font-size: 14px; }
+  .summary td:last-child { text-align: right; color: var(--muted); width: 3.5em; }
+  .summary .rune { color: var(--rune); } .summary .uniq { color: var(--gold); }
+  .summary .set { color: var(--set); } .summary .quest { color: var(--magic); }
+  .ks { display: flex; gap: 10px; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .x { background: none; border: 0; color: var(--muted); padding: 2px 6px; font-size: 14px; }
+  .x:hover { color: var(--danger); filter: none; }
+
+  .past { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+  .past li { display: flex; justify-content: space-between; color: var(--muted); }
+
+  details { color: var(--muted); font-size: 12.5px; }
+  details summary { cursor: pointer; }
+  details pre { font: 12px/1.5 var(--mono); background: var(--panel); border: 1px solid var(--line);
+                border-radius: 4px; padding: 10px; overflow-x: auto; color: var(--text); }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel-2);
+           border: 1px solid var(--gold); color: var(--text); padding: 8px 14px; border-radius: 4px; font-size: 14px;
+           opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .offline { border: 1px solid var(--danger); color: var(--danger); padding: 10px 14px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Run Ledger</h1>
+    <div class="hdr-r">
+      <div class="meta" id="meta">connecting…</div>
+      <button id="stopsession" class="reset stop" title="End the session now: the current run closes and nothing more is recorded">Stop session</button>
+      <button id="newsession" class="reset" title="Save this session to history and start counting from zero">New session</button>
+    </div>
+  </header>
+
+  <div id="offline" class="offline" hidden>Can't reach the tracker. Is <code>tracker.py</code> still running?</div>
+
+  <section class="hero" aria-live="polite">
+    <div>
+      <div class="status" id="status"><i></i><span>—</span></div>
+      <div class="clock off" id="clock">0:00</div>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div class="droppane">
+      <div class="herald">
+        <div>
+          <h2>Heralds</h2>
+          <div class="hcount num" id="hsession">0</div>
+          <div class="hint">this run <b class="num" id="hrun">0</b> &nbsp;·&nbsp; press <kbd class="hk">F9</kbd> in game</div>
+        </div>
+        <div class="hbtns">
+          <button class="ghost" id="hminus" aria-label="Remove one herald kill">−</button>
+          <button id="hplus" aria-label="Add one herald kill">+1</button>
+        </div>
+      </div>
+      <h2>Log a drop</h2>
+      <form class="droprow" id="dropform" autocomplete="off">
+        <input type="text" id="dropname" list="items" placeholder="Shako, Ber, Tal ammy…" aria-label="Item name">
+        <button type="submit">Log</button>
+      </form>
+      <div class="quick" id="quick"></div>
+      <div class="hint">Goes to the current run, or the last one if you're in the lobby. Jump to the box: <kbd>/</kbd></div>
+    </div>
+  </section>
+
+  <section class="stats" id="stats"></section>
+
+  <div class="cols">
+    <section class="card">
+      <div class="card-h"><h2>Runs this session</h2></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>#</th><th>Time</th><th></th><th>Heralds</th><th>Drops</th><th>Started</th><th></th></tr></thead>
+          <tbody id="runs"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="norun" hidden>No runs yet. Create a game in D2R and it will appear here automatically.</div>
+    </section>
+
+    <aside style="display:grid; gap:20px">
+      <section class="card">
+        <h2>Drops</h2>
+        <ul class="droplist" id="drops"></ul>
+        <div class="empty" id="nodrop">Nothing logged yet.</div>
+        <div id="summarywrap" hidden>
+          <h2 style="margin:6px 0 6px">Summary</h2>
+          <table class="summary"><tbody id="summary"></tbody></table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Earlier sessions</h2>
+        <ul class="past" id="past"></ul>
+      </section>
+      <details>
+        <summary>Diagnostics</summary>
+        <pre id="diag"></pre>
+      </details>
+    </aside>
+  </div>
+</div>
+
+<datalist id="items"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+const RUNES = "El Eld Tir Nef Eth Ith Tal Ral Ort Thul Amn Sol Shael Dol Hel Io Lum Ko Fal Lem Pul Um Mal Ist Gul Vex Ohm Lo Sur Ber Jah Cham Zod".split(" ");
+// Item names from d2db.net (set_item, unique, base&cat=Quest), fetched 2026-09-24.
+// Regenerate rather than hand-edit.
+const ITEMS = /*D2DB*/{"set":["Aldur's Advance","Aldur's Deception","Aldur's Rhythm","Aldur's Stony Gaze","Angelic Halo","Angelic Mantle","Angelic Sickle","Angelic Wings","Arcanna's Deathwand","Arcanna's Flesh","Arcanna's Head","Arcanna's Sign","Arctic Binding","Arctic Furs","Arctic Horn","Arctic Mitts","Bane's Authority","Bane's Oathmaker","Bane's Wraithskin","Berserker's Hatchet","Berserker's Hauberk","Berserker's Headgear","Bul-Kathos' Sacred Charge","Bul-Kathos' Tribal Guardian","Cathan's Mesh","Cathan's Rule","Cathan's Seal","Cathan's Sigil","Cathan's Visage","Civerb's Cudgel","Civerb's Icon","Civerb's Ward","Cleglaw's Claw","Cleglaw's Pincers","Cleglaw's Tooth","Cow King's Hide","Cow King's Hooves","Cow King's Horns","Credendum","Dangoon's Teaching","Dark Adherent","Death's Guard","Death's Hand","Death's Touch","Griswold's Heart","Griswold's Honor","Griswold's Redemption","Griswold's Valor","Guillaume's Face","Haemosu's Adamant","Horazon's Countenance","Horazon's Dominion","Horazon's Hold","Horazon's Legacy","Horazon's Secrets","Hsarus' Iron Fist","Hsarus' Iron Heel","Hsarus' Iron Stay","Hwanin's Blessing","Hwanin's Justice","Hwanin's Refuge","Hwanin's Splendor","Immortal King's Detail","Immortal King's Forge","Immortal King's Pillar","Immortal King's Soul Cage","Immortal King's Stone Crusher","Immortal King's Will","Infernal Cranium","Infernal Sign","Infernal Torch","Iratha's Coil","Iratha's Collar","Iratha's Cord","Iratha's Cuff","Isenhart's Case","Isenhart's Horns","Isenhart's Lightbrand","Isenhart's Parry","Laying of Hands","M'avina's Caster","M'avina's Embrace","M'avina's Icy Clutch","M'avina's Tenet","M'avina's True Sight","Magnus' Skin","Milabrega's Diadem","Milabrega's Orb","Milabrega's Robe","Milabrega's Rod","Naj's Circlet","Naj's Light Plate","Naj's Puzzler","Natalya's Mark","Natalya's Shadow","Natalya's Soul","Natalya's Totem","Ondal's Almighty","Rite of Passage","Sander's Paragon","Sander's Riprap","Sander's Superstition","Sander's Taboo","Sazabi's Cobalt Redeemer","Sazabi's Ghost Liberator","Sazabi's Mental Sheath","Sigon's Gage","Sigon's Guard","Sigon's Sabot","Sigon's Shelter","Sigon's Visor","Sigon's Wrap","Taebaek's Glory","Tal Rasha's Adjudication","Tal Rasha's Fine-Spun Cloth","Tal Rasha's Guardianship","Tal Rasha's Horadric Crest","Tal Rasha's Lidless Eye","Tancred's Crowbill","Tancred's Hobnails","Tancred's Skull","Tancred's Spine","Tancred's Weird","Telling of Beads","Trang-Oul's Claws","Trang-Oul's Girth","Trang-Oul's Guise","Trang-Oul's Scales","Trang-Oul's Wing","Vidala's Ambush","Vidala's Barb","Vidala's Fetlock","Vidala's Snare","Warlord's Authority","Warlord's Conquest","Warlord's Crushers","Warlord's Lust","Warlord's Mantle","Whitstan's Guard","Wilhelm's Pride"],"unique":["Alma Negra","Amulet of the Viper","Andariel's Visage","Annihilus","Arachnid Mesh","Arioc's Needle","Arkaine's Valor","Arm of King Leoric","Arreat's Face","Ars Al'Diabolos","Ars Dul'Mephistos","Ars Tor'Baalos","Astreon's Iron Ward","Athena's Wrath","Atma's Scarab","Atma's Wail","Axe of Fechmar","Azurewrath","Baezil's Vortex","Bane Ash","Baranar's Star","Bartuc's Cut-Throat","Biggin's Bonnet","Bing Sz Wang","Black Cleft","Black Hades","Blackbog's Sharp","Blackhand Key","Blackhorn's Face","Blackleach Blade","Blackoak Shield","Blacktongue","Blade of Ali Baba","Bladebone","Bladebuckle","Blastbark","Blinkbat's Form","Blood Crescent","Blood Raven's Charge","Bloodfist","Bloodletter","Bloodmoon","Bloodpact Shard","Bloodrise","Bloodthief","Bloodtree Stump","Bone Break","Boneflame","Boneflesh","Bonehew","Boneshade","Boneslayer Blade","Bonesnap","Brainhew","Bul-Kathos' Wedding Band","Buriza-Do Kyanon","Butcher's Pupil","Bverrit Keep","Carin Shard","Carrion Wind","Cerebus' Bite","Chance Guards","Chromatic Ire","Cliffkiller","Cloudcrack","Coif of Glory","Cold Rupture","Coldkill","Coldsteel Eye","Constricting Ring","Corpsemourn","Crack of the Heavens","Crainte Vomir","Cranebeak","Crescent Moon","Crow Caw","Crown of Ages","Crown of Thieves","Crushflange","Culwen's Point","Dark Clan Crusher","Darkforce Spawn","Darkglow","Darksight Helm","Death Cleaver","Death's Fathom","Death's Web","Deathbit","Deathspade","Defender's Bile","Defender's Fire","Demon Limb","Demon Machine","Demon's Arch","Demonhorn's Edge","Dimoak's Hew","Djinn Slayer","Doombringer","Doomslinger","Dracul's Grasp","Dragonscale","Dreadfang","Duriel's Shell","Duskdeep","Dwarf Star","Eaglehorn","Earth Shifter","Earthshaker","Endlesshail","Entropy Locket","Eschuta's Temper","Ethereal Edge","Executioner's Justice","Felloak","Firelizard's Talons","Flame Rift","Flamebellow","Fleshrender","Fleshripper","Frostburn","Frostwind","Gargoyle's Bite","Gerke's Sanctuary","Gheed's Fortune","Gheed's Wager","Ghostflame","Ghoulhide","Giant Skull","Gimmershred","Ginther's Rift","Gleamscythe","Gloom's Trap","Goblin Toe","Goldskin","Goldstrike Arch","Goldwrap","Gore Rider","Gorefoot","Goreshovel","Gravenspine","Gravepalm","Greyform","Griffon's Eye","Grim's Burning Dead","Griswold's Edge","Guardian Angel","Guardian Naga","Guardian's Light","Guardian's Thunder","Gull","Gut Siphon","Halaberd's Reign","Hand of Blessed Light","Harlequin Crest","Hawkmail","Head Hunter's Glory","Headstriker","Heart Carver","Heaven's Light","Heavenly Garb","Hell Forge Hammer","Hellcast","Hellclap","Hellfire Torch","Hellmouth","Hellplague","Hellrack","Hellslayer","Hellwarden's Will","Herald of Zakarum","Hexfire","Highlord's Wrath","Homunculus","Hone Sundan","Horadric Staff","Horizon's Tornado","Hotspur","Howltusk","Humongous","Husoldal Evo","Iceblink","Ichorsting","Infernostride","Iron Pelt","Ironstone","Islestrike","Jade Talon","Jalal's Mane","Kelpie Snare","Khalim's Flail","Khalim's Will","Kinemil's Awl","Kira's Guardian","Knell Striker","Kuko Shakaku","Lacerator","Lance Guard","Lance of Yaggai","Langer Briser","Latent Black Cleft","Latent Bone Break","Latent Cold Rupture","Latent Crack of the Heavens","Latent Flame Rift","Latent Rotting Fissure","Lava Gout","Leadcrow","Lenymo","Leviathan","Lidless Wall","Lightsabre","Lycander's Aim","Lycander's Flank","Maelstrom","Magefist","Magewrath","Manald Heal","Mang Song's Lesson","Mara's Kaleidoscope","Marrowwalk","Measured Wrath","Medusa's Gaze","Messerschmidt's Reaver","Metalgrid","Moonfall","Moser's Blessed Circle","Nagelring","Nature's Peace","Nightsmoke","Nightwing's Veil","Nokozan Relic","Nord's Tenderizer","Nosferatu's Coil","Ondal's Wisdom","Opalvein","Ormus' Robes","Peasant Crown","Pelta Lunata","Pierre Tombale Couant","Plague Bearer","Pluckeye","Pompeii's Wrath","Protector's Frost","Protector's Stone","Pus Spitter","Que-Hegan's Wisdom","Radament's Sphere","Rainbow Facet","Rakescar","Rattlecage","Raven Claw","Raven Frost","Ravenlore","Razor's Edge","Razorswitch","Razortail","Razortine","Renewed Black Cleft","Renewed Bone Break","Renewed Cold Rupture","Renewed Crack of the Heavens","Renewed Flame Rift","Renewed Rotting Fissure","Ribcracker","Riphook","Ripsaw","Rixot's Keen","Rockfleece","Rockstopper","Rogue's Bow","Rotting Fissure","Rune Master","Rusthandle","Sandstorm Trek","Saracen's Chance","Schaefer's Hammer","Seraph's Hymn","Serpent Lord","Shadow Dancer","Shadow Killer","Shadowfang","Shaftstop","Silks of the Victor","Silkweave","Skewer of Krintiz","Skin of the Flayed One","Skin of the Vipermagi","Skull Collector","Skull Splitter","Skullder's Ire","Skystrike","Sling","Snakecord","Snowclash","Soul Drainer","Soul Harvest","Soulfeast Tine","Soulflay","Sparking Mail","Spectral Shard","Spellsteel","Spike Thorn","Spineripper","Spire of Honor","Spire of Lazarus","Spirit Forge","Spirit Keeper","Spirit Ward","Staff of Kings","Stealskull","Steel Carapace","Steel Pillar","Steel Shade","Steelclash","Steeldriver","Steelgoad","Steelrend","Stone Crusher","Stoneraven","Stormchaser","Stormeye","Stormguild","Stormlash","Stormrider","Stormshield","Stormspike","Stormspire","Stormstrike","Stoutnail","String of Ears","Suicide Branch","Sureshrill Frost","Swordback Hold","Swordguard","Tarnhelm","Tearhaunch","Templar's Might","The Atlantean","The Battlebranch","The Cat's Eye","The Centurion","The Chieftain","The Cranium Basher","The Diggler","The Dragon Chang","The Eye of Etlich","The Face of Horror","The Fetid Sprinkler","The Gavel of Pain","The General's Tan Do Li Ga","The Gladiator's Bane","The Gnasher","The Grandfather","The Grim Reaper","The Hand of Broc","The Impaler","The Iron Jang Bong","The Jade Tan Do","The Mahim-Oak Curio","The Meat Scraper","The Minotaur","The Oculus","The Patriarch","The Reaper's Toll","The Redeemer","The Rising Sun","The Salamander","The Scalper","The Spirit Shroud","The Stone of Jordan","The Tannr Gorerod","The Vile Husk","The Ward","Thundergod's Vigor","Thunderstroke","Tiamat's Rebuke","Titan's Revenge","Todesfaelle Flamme","Tomb Reaver","Toothrow","Torch of Iro","Treads of Cthon","Twitchthroe","Tyrael's Might","Umbral Disk","Ume's Lament","Undead Crown","Valkyrie Wing","Vampire Gaze","Veil of Steel","Venom Grip","Venom Ward","Verdungo's Hearty Cord","Viperfork","Visceratuant","Wall of the Eyeless","War Traveler","Warlord's Trust","Warpspear","Warshrike","Waterwalk","Widowmaker","Windforce","Windhammer","Wisp Projector","Witchwild String","Witherstring","Wizardspike","Wizendraw","Woestave","Wolfhowl","Wormskull","Wraith Flight","Wraithstep","Zakarum's Hand"],"quest":["A Jade Figurine","Book of Skill","Brain","Bul-Kathos' Nightmare","Ear","Eye","Fang","Flag","Heart","Hell Forge Hammer","Herb","Horadric Cube","Horadric Malus","Horadric Scroll","Horn","Jawbone","Key to the Cairn Stones","Khalim's Brain","Khalim's Eye","Khalim's Flail","Khalim's Heart","Khalim's Will","Korlic's Pain","Lam Esen's Tome","Madawc's Ire","Malah's Potion","Mephisto's Soulstone","Potion of Life","Quill","Scalp","Scroll of Inifuss","Scroll of Knowledge","Scroll of Resistance","Soul","Spleen","Standard of Heroes","Tail","Talic's Anguish","The Black Tower Key","The Golden Bird","Top of the Horadric Staff","Wirt's Leg","Worusk's End"]}/*END*/;
+const UNIQUES = ITEMS.unique;
+const QUICK = ["Ist","Gul","Vex","Ohm","Lo","Sur","Ber","Jah","Shako","SoJ","Mara's"];
+// [button label, name logged]. Uber keys, in-game orange like runes.
+const KEYS = [["Terror", "Key of Terror"], ["Hate", "Key of Hate"], ["Destruction", "Key of Destruction"]];
+const keyNames = new Set(KEYS.map(k => k[1].toLowerCase()));
+const runeSet = new Set(RUNES.map(r => r.toLowerCase()));
+const uniqWords = UNIQUES.map(u => u.toLowerCase());
+const setNames = new Set(ITEMS.set.map(s => s.toLowerCase()));
+const questNames = new Set(ITEMS.quest.map(s => s.toLowerCase()));
+
+const BUILTIN = [...KEYS.map(k => k[1]), ...RUNES.map(r => r + " Rune"), ...UNIQUES, ...ITEMS.set, ...ITEMS.quest];
+// Suggestions = built-in list + every name you've ever logged, so new items only need typing once.
+function refreshSuggestions(extra = []) {
+  const seen = new Set(), all = [];
+  for (const v of [...extra, ...BUILTIN]) { const k = v.toLowerCase(); if (!seen.has(k)) { seen.add(k); all.push(v); } }
+  document.getElementById("items").innerHTML = all.map(v => `<option value="${esc(v)}">`).join("");
+}
+document.getElementById("quick").innerHTML = QUICK.map(q =>
+  `<button type="button" data-q="${q}" class="${runeSet.has(q.toLowerCase()) ? "" : "u"}">${q}</button>`).join("") +
+  `<span class="qsep" aria-hidden="true"></span>` +
+  KEYS.map(([label, name]) => `<button type="button" data-q="${name}" title="${name}">${label}</button>`).join("");
+
+const $ = id => document.getElementById(id);
+let S = null, skew = 0, lastOk = 0;
+
+function kind(name) {
+  const n = name.toLowerCase().replace(/\s+rune$/, "").trim();
+  if (runeSet.has(n) || keyNames.has(n)) return "rune";
+  if (setNames.has(n)) return "set";
+  if (questNames.has(n)) return "quest";
+  if (/shako|soj|mara|anni|torch|griffon|arach/.test(n) || uniqWords.some(u => u.includes(n) && n.length > 3)) return "uniq";
+  return "";
+}
+function esc(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmt(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}` : `${m}:${String(s).padStart(2,"0")}`;
+}
+const clockTime = t => new Date(t * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+const serverNow = () => Date.now() / 1000 + skew;
+const median = a => { if (!a.length) return 0; const b = [...a].sort((x,y)=>x-y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m-1]+b[m]) / 2; };
+
+function computeStats(runs) {
+  const done = runs.filter(r => r.end != null && !r.partial);
+  const durs = done.map(r => r.end - r.start);
+  const gaps = [];
+  for (let i = 1; i < runs.length; i++) {
+    const g = runs[i].start - (runs[i-1].end ?? runs[i].start);
+    if (g >= 0 && g < 1800) gaps.push(g);     // longer = a break, not lobby time
+  }
+  const inGame = durs.reduce((a,b)=>a+b, 0);
+  const span = runs.length ? (S.session.stopped || serverNow()) - runs[0].start : 0;   // frozen once stopped
+  return {
+    count: done.length, avg: durs.length ? inGame / durs.length : 0, med: median(durs),
+    best: durs.length ? Math.min(...durs) : 0, inGame,
+    perHour: span > 300 ? done.length / (span / 3600) : null,
+    hours: span / 3600,       // same session-span basis as runs/hour and heralds/hour
+    lobby: gaps.length ? gaps.reduce((a,b)=>a+b,0) / gaps.length : null,
+    drops: runs.reduce((a, r) => a + r.drops.length, 0),
+    heralds: runs.reduce((a, r) => a + (r.heralds || 0), 0),
+    heraldHour: span > 300 ? runs.reduce((a, r) => a + (r.heralds || 0), 0) / (span / 3600) : null,
+    keys: KEYS.map(([label, name]) => [label, runs.reduce((a, r) =>
+      a + r.drops.filter(d => d.name.toLowerCase() === name.toLowerCase()).length, 0)]),
+  };
+}
+
+function renderTick() {
+  if (!S) return;
+  const runs = S.session.runs, now = serverNow();
+  const st = $("status"), clock = $("clock"), sub = $("sub");
+  const stats = computeStats(runs);
+  if (S.session.stopped) {
+    const last = runs[runs.length - 1];
+    st.className = "status stopped"; st.lastElementChild.textContent = "Session stopped";
+    clock.className = "clock off"; clock.textContent = "0:00";
+    sub.innerHTML = `Stopped at <b class="num">${clockTime(S.session.stopped)}</b> after <b class="num">${runs.length}</b> runs. ` +
+      `Press <b>New session</b> to start tracking again.`;
+  } else if (!S.d2r_running) {
+    st.className = "status"; st.lastElementChild.textContent = "D2R not running";
+    clock.className = "clock off"; clock.textContent = "0:00"; sub.textContent = "";
+  } else if (S.in_game) {
+    const r = runs[runs.length - 1], d = now - r.start;
+    st.className = "status ingame"; st.lastElementChild.textContent = `In game · run ${runs.length}`;
+    clock.className = "clock ingame"; clock.textContent = (r.partial ? "≥" : "") + fmt(d);
+    if (r.partial) sub.textContent = "Tracker started mid-game, so this run's real start is unknown. Left out of the stats.";
+    else if (stats.avg) {
+      const diff = d - stats.avg;
+      sub.innerHTML = `Average <b class="num">${fmt(stats.avg)}</b> · best <b class="num">${fmt(stats.best)}</b> · ` +
+        (diff < 0 ? `<span class="cmp-fast num">${fmt(-diff)} under avg</span>` : `<span class="cmp-slow num">${fmt(diff)} over avg</span>`);
+    } else sub.textContent = "First run of the session.";
+  } else {
+    const last = runs[runs.length - 1];
+    st.className = "status lobby"; st.lastElementChild.textContent = "In lobby";
+    clock.className = "clock lobby"; clock.textContent = last ? fmt(now - last.end) : "0:00";
+    sub.innerHTML = last ? `Last run <b class="num">${last.partial ? "≥" : ""}${fmt(last.end - last.start)}</b>` +
+      (last.drops.length ? ` · ${last.drops.map(d => esc(d.name)).join(", ")}` : "") : "Create a game to start the first run.";
+  }
+  // live row duration
+  const liveCell = document.querySelector("tr.live .dur");
+  if (liveCell && S.in_game) liveCell.textContent = fmt(now - runs[runs.length-1].start);
+}
+
+function render() {
+  const runs = S.session.runs, st = computeStats(runs);
+  $("meta").textContent = `Session since ${new Date(S.session.start*1000).toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"})}` +
+    (S.session.stopped ? ` · stopped ${clockTime(S.session.stopped)}` : "");
+  $("stopsession").hidden = !!S.session.stopped;
+  $("newsession").textContent = S.session.stopped ? "Start new session" : "New session";
+  const cell = (k, v, sub = "") => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${sub}</div>`;
+  const keyTotal = st.keys.reduce((a, k) => a + k[1], 0);
+  const keySub = `<div class="ks num">${st.keys.map(([l, n]) => `<span title="Key of ${l}">${l[0]}&nbsp;${n}</span>`).join("")}</div>`;
+  $("stats").innerHTML =
+    cell("Runs", st.count) + cell("Average", st.avg ? fmt(st.avg) : "—") + cell("Median", st.med ? fmt(st.med) : "—") +
+    cell("Fastest", st.best ? fmt(st.best) : "—") + cell("Runs / hour", st.perHour ? st.perHour.toFixed(1) : "—") +
+    cell("Avg lobby", st.lobby != null ? fmt(st.lobby) : "—") + cell("In game", fmt(st.inGame)) +
+    cell("Heralds / hour", st.heraldHour != null ? st.heraldHour.toFixed(1) : "—") +
+    cell("Heralds / run", runs.length ? (st.heralds / runs.length).toFixed(2) : "—") +
+    cell("Keys", `<span style="color:var(--rune)">${keyTotal}</span>`, keySub) +
+    cell("Keys / hour", st.perHour != null ? (keyTotal / st.hours).toFixed(1) : "—") + cell("Drops", st.drops);
+  const hs = $("hsession"), prevH = +hs.textContent;
+  hs.textContent = st.heralds;
+  if (st.heralds > prevH) { hs.classList.remove("bump"); void hs.offsetWidth; hs.classList.add("bump"); }
+  $("hrun").textContent = runs.length ? (runs[runs.length - 1].heralds || 0) : 0;
+
+  const maxD = Math.max(1, ...runs.map(r => (r.end ?? serverNow()) - r.start));
+  $("norun").hidden = runs.length > 0;
+  $("runs").innerHTML = runs.map((r, i) => ({r, i})).reverse().map(({r, i}) => {
+    const live = r.end == null && S.in_game && i === runs.length - 1;
+    const d = (r.end ?? serverNow()) - r.start;
+    const cls = !live && st.avg && st.count > 2 ? (d < st.avg * 0.85 ? "fast" : d > st.avg * 1.25 ? "slow" : "") : "";
+    return `<tr class="${live ? "live" : ""}">
+      <td class="num">${i + 1}</td>
+      <td class="num dur" ${r.partial ? `title="Tracker started mid-game: real run was longer. Not counted in stats."` : ""}>${r.partial ? "≥" : ""}${fmt(d)}</td>
+      <td><div class="bar ${cls}"><span style="width:${(d / maxD * 100).toFixed(1)}%"></span></div></td>
+      <td class="num"><span class="hstep">
+        <button data-hrun="${r.id}" data-hd="-1" aria-label="One fewer herald in run ${i + 1}">−</button>
+        <span class="hv ${r.heralds ? "nz" : "z"}">${r.heralds || 0}</span>
+        <button data-hrun="${r.id}" data-hd="1" aria-label="One more herald in run ${i + 1}">+</button>
+      </span></td>
+      <td><div class="chips">${r.drops.map(x => `<span class="chip ${kind(x.name)}">${esc(x.name)}</span>`).join("")}</div></td>
+      <td class="num" style="color:var(--muted)">${clockTime(r.start)}</td>
+      <td><div class="actions">
+        ${i > 0 ? `<button class="ghost" data-merge="${r.id}" title="Treat this and the previous run as one game (use after a disconnect)">Merge ↑</button>` : ""}
+        ${live ? "" : `<button class="ghost warn" data-del="${r.id}" title="Delete this run">✕</button>`}
+      </div></td></tr>`;
+  }).join("");
+
+  const drops = runs.flatMap((r, i) => r.drops.map(d => ({...d, run: i + 1}))).reverse();
+  $("nodrop").hidden = drops.length > 0;
+  $("drops").innerHTML = drops.map(d => `<li><span class="t num">run ${d.run}</span>
+      <span class="n ${kind(d.name)}">${esc(d.name)}</span>
+      <button class="x" data-dropdel="${d.id}" aria-label="Remove ${esc(d.name)}">✕</button></li>`).join("");
+
+  // Summary: identical drops grouped, most frequent first. "Ber" and "Ber Rune" count as one.
+  const groups = new Map();
+  for (const d of drops.slice().reverse()) {             // oldest first -> first-logged spelling wins
+    const k = d.name.toLowerCase().replace(/\s+rune$/, "").trim();
+    const g = groups.get(k) || {name: d.name, n: 0};
+    g.n++; groups.set(k, g);
+  }
+  const summary = [...groups.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  $("summarywrap").hidden = summary.length === 0;
+  $("summary").innerHTML = summary.map(g =>
+    `<tr><td class="${kind(g.name)}">${esc(g.name)}</td><td class="num">×${g.n}</td></tr>`).join("");
+
+  refreshSuggestions([...(S.known_items || []), ...runs.flatMap(r => r.drops.map(d => d.name))]);
+  $("past").innerHTML = S.past_sessions.length ? S.past_sessions.map(p =>
+    `<li><span>${new Date(p.start*1000).toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"})} ${clockTime(p.start)}</span>
+     <span class="num">${p.runs} runs · ${p.heralds || 0} heralds · ${p.drops} drops</span></li>`).join("") : `<li>None yet.</li>`;
+
+  $("diag").textContent = JSON.stringify(S.diag, null, 1);
+  renderTick();
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/state", {cache: "no-store"});
+    const s = await r.json();
+    skew = s.now - Date.now() / 1000;
+    const sig = JSON.stringify([s.session.id, s.session.runs.map(r => [r.id, r.end, r.drops.length, r.heralds]),
+                                s.in_game, s.d2r_running, s.past_sessions.length, s.session.stopped]);
+    if (sig !== refresh.sig) { S = s; refresh.sig = sig; render(); } else S = s;
+    $("diag").textContent = JSON.stringify(s.diag, null, 1);
+    lastOk = Date.now();
+    $("offline").hidden = true;
+  } catch { if (Date.now() - lastOk > 4000) $("offline").hidden = false; }
+}
+
+async function post(path, body) {
+  const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const j = await r.json(); await refresh(); return j.ok;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 1800); }
+
+async function logDrop(name) {
+  name = name.trim(); if (!name) return;
+  if (!S || !S.session.runs.length) return toast("No run yet to attach it to.");
+  if (await post("/api/drop", {name})) toast(`Logged ${name} → run ${S.session.runs.length}`);
+}
+async function herald(delta) {
+  if (!S || !S.session.runs.length) return toast("No run yet to count it on.");
+  await post("/api/herald", {delta});
+}
+$("hplus").addEventListener("click", () => herald(1));
+$("hminus").addEventListener("click", () => herald(-1));
+$("dropform").addEventListener("submit", e => { e.preventDefault(); logDrop($("dropname").value); $("dropname").value = ""; });
+$("quick").addEventListener("click", e => { const q = e.target.dataset.q; if (q) logDrop(q); });
+document.addEventListener("click", async e => {
+  const t = e.target;
+  if (t.dataset.merge && confirmInline(t, "Merge?")) await post("/api/run/merge", {id: t.dataset.merge});
+  else if (t.dataset.del && confirmInline(t, "Delete?")) await post("/api/run/delete", {id: t.dataset.del});
+  else if (t.dataset.dropdel) await post("/api/drop/delete", {id: t.dataset.dropdel});
+  else if (t.dataset.hrun) await post("/api/herald", {run_id: t.dataset.hrun, delta: +t.dataset.hd});
+});
+// two-click confirm without browser dialogs
+function confirmInline(btn, label) {
+  if (btn.dataset.armed) return true;
+  const old = btn.textContent; btn.dataset.armed = 1; btn.textContent = label;
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = old; }, 2500);
+  return false;
+}
+$("stopsession").addEventListener("click", async e => {
+  const b = e.target;
+  if (!confirmInline(b, "Click again to stop")) { b.classList.add("armed"); setTimeout(() => b.classList.remove("armed"), 2500); return; }
+  b.classList.remove("armed");
+  if (await post("/api/session/stop", {})) toast("Session stopped. Nothing more is recorded until you start a new one.");
+});
+$("newsession").addEventListener("click", async e => {
+  const b = e.target;
+  if (!confirmInline(b, "Click again to reset")) { b.classList.add("armed"); setTimeout(() => b.classList.remove("armed"), 2500); return; }
+  b.classList.remove("armed");
+  if (await post("/api/session/new", {}))
+    toast(S && S.in_game ? "New session started. The current run carries over." : "New session started.");
+  else toast("Couldn't start a new session. Is the tracker running a current version?");
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== $("dropname")) { e.preventDefault(); $("dropname").focus(); }
+});
+
+refresh(); setInterval(refresh, 1000); setInterval(renderTick, 250);
+</script>
+</body>
+</html>
