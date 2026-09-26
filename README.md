@@ -3,6 +3,8 @@
 A run tracker for **Diablo II: Resurrected** that times your runs automatically
 and counts herald kills and drops, shown on a local web page.
 
+![Run Ledger after a 44-run session](docs/run-ledger.png)
+
 It **never touches the game process**. There is no memory reading, no injection
 and no hooks into D2R. It reads the Windows TCP connection table, the same data
 `netstat` shows. D2R opens one connection to a game server when you join a game
